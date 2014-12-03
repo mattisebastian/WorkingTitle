@@ -1,7 +1,9 @@
 package de.admuc.gruppe12.workingtitle;
 
-import android.support.v4.app.FragmentActivity;
+import android.content.Context;
 import android.os.Bundle;
+import android.support.v4.app.FragmentActivity;
+import android.widget.Toast;
 
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -56,7 +58,6 @@ public class MapsActivity extends FragmentActivity {
             }
         }
     }
-
     /**
      * This is where we can add markers or lines, add listeners or move the camera. In this case, we
      * just add a marker near Africa.
@@ -73,5 +74,22 @@ public class MapsActivity extends FragmentActivity {
                 .snippet("Kiel is cool")
                 .icon(BitmapDescriptorFactory
                         .fromResource(R.drawable.ic_launcher)));
+
+
+        // listen for clicks on the map, create a dialog for adding a new marker :)
+        mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+            @Override
+            public void onMapClick(LatLng point) {
+
+                Context context = getApplicationContext();
+                CharSequence text = "Hello toast! Pos: " + point.latitude + ":" + point.longitude;
+                int duration = Toast.LENGTH_SHORT;
+
+                Toast toast = Toast.makeText(context, text, duration);
+                toast.show();
+            }
+        });
+
     }
+
 }
