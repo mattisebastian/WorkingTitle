@@ -2,18 +2,39 @@
 
 buildscript {
     repositories {
-        jcenter()
+        mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:1.0.0-rc2'
-
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+//        classpath 'com.android.tools.build:gradle:1.0.0'
     }
 }
 
-allprojects {
-    repositories {
-        jcenter()
-    }
+//apply plugin: 'com.android.application'
+
+//android {
+//
+//    sourceSets {
+//        main {
+//            manifest.srcFile 'app/src/main/AndroidManifest.xml'
+//        }
+//    }
+//
+//    compileSdkVersion 21
+//    buildToolsVersion '19.1.0'
+//    defaultConfig {
+//        applicationId 'de.admuc.gruppe12.workingtitle'
+//        minSdkVersion 9
+//        targetSdkVersion 21
+//    }
+//    buildTypes {
+//        release {
+//            minifyEnabled true
+//
+//        }
+//    }
+//    productFlavors {   }
+//}
+
+dependencies {
+
 }

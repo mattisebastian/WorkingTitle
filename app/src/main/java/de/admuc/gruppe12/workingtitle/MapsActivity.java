@@ -21,6 +21,8 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import static com.google.android.gms.maps.GoogleMap.OnMapClickListener;
+
 /**
  * This class creates and wraps the Google Maps View.
  * It also zooms to the last known location and generates periodic updates to the users location
@@ -50,6 +52,11 @@ public class MapsActivity extends FragmentActivity implements
      * Set by the user if he wants to receive location updates
      */
     private boolean mRequestingLocationUpdates = true;
+
+    /**
+     * A reference to allow only one tempmarker at a time
+     */
+    private Marker tempMarker = null;
 
 
     /**
@@ -151,9 +158,8 @@ public class MapsActivity extends FragmentActivity implements
                 .icon(BitmapDescriptorFactory
                         .fromResource(R.drawable.ic_launcher)));
 
-
         // listen for clicks on the map, create a dialog for adding a new marker :)
-        mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+        mMap.setOnMapClickListener(new OnMapClickListener() {
             @Override
             public void onMapClick(LatLng point) {
 
@@ -161,11 +167,25 @@ public class MapsActivity extends FragmentActivity implements
                 CharSequence text = "Hello toast! Pos: " + point.latitude + ":" + point.longitude;
                 int duration = Toast.LENGTH_SHORT;
 
+
+                createMarker(point);
+
                 Toast toast = Toast.makeText(context, text, duration);
                 toast.show();
             }
         });
 
+    }
+
+    private void createMarker(LatLng p) {
+        // create a marker at the clicked location
+        if (tempMarker != null)
+            tempMarker.remove();
+        tempMarker = null;
+        tempMarker = mMap.addMarker(new MarkerOptions()
+                .position(p)
+                .title("TempMarker")
+                .snippet("A temporary marker"));
     }
 
     private void moveCameraToLastLocation() {
