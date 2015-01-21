@@ -1,5 +1,6 @@
 package de.admuc.gruppe12.workingtitle;
 
+import android.app.DialogFragment;
 import android.content.Context;
 import android.location.Location;
 import android.os.Bundle;
@@ -10,18 +11,21 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.GoogleMap.OnInfoWindowClickListener;
+import com.google.android.gms.maps.GoogleMap.OnMapClickListener;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-import static com.google.android.gms.maps.GoogleMap.OnMapClickListener;
+// why were these imports static?
 
 /**
  * This class creates and wraps the Google Maps View.
@@ -29,10 +33,12 @@ import static com.google.android.gms.maps.GoogleMap.OnMapClickListener;
  */
 
 public class MapsActivity extends FragmentActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener, com.google.android.gms.location.LocationListener {
+        ConnectionCallbacks, OnConnectionFailedListener,
+        LocationListener, OnInfoWindowClickListener,
+        CreateNewSpotDialog.NoticeDialogListener {
 
-    // Dummy data
-    static final LatLng HAMBURG = new LatLng(53.558, 9.927);
+    public static final String TEMP_MARKER_LAT = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LAT";
+    public static final String TEMP_MARKER_LONG = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LONG";
     static final LatLng KIEL = new LatLng(53.551, 9.993);
     /**
      * Stores parameters for requests to the FusedLocationProviderApi.
@@ -49,11 +55,6 @@ public class MapsActivity extends FragmentActivity implements
     private Location mLastLocation;
 
     /**
-     * Set by the user if he wants to receive location updates
-     */
-    private boolean mRequestingLocationUpdates = true;
-
-    /**
      * A reference to allow only one tempmarker at a time
      */
     private Marker tempMarker = null;
@@ -68,7 +69,7 @@ public class MapsActivity extends FragmentActivity implements
                 .addOnConnectionFailedListener(this)
                 .addApi(LocationServices.API)
                 .build();
-        createLocationRequest();
+        //createLocationRequest();
     }
 
 
@@ -82,16 +83,8 @@ public class MapsActivity extends FragmentActivity implements
     @Override
     public void onConnected(Bundle connectionHint) {
         moveCameraToLastLocation();
-        if (mRequestingLocationUpdates) {
-            startLocationUpdates();
-        }
-    }
 
-    protected void startLocationUpdates() {
-        LocationServices.FusedLocationApi.requestLocationUpdates(
-                mGoogleApiClient, mLocationRequest, this);
     }
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -145,12 +138,8 @@ public class MapsActivity extends FragmentActivity implements
     private void setUpMap() {
 
         // basic ui settings
-        mMap.setMyLocationEnabled(true);
-        mMap.getUiSettings().setZoomControlsEnabled(true);
-
-        mMap.addMarker(new MarkerOptions().position(new LatLng(0, 0)).title("Marker"));
-        Marker hamburg = mMap.addMarker(new MarkerOptions().position(HAMBURG)
-                .title("Hamburg"));
+        //mMap.setMyLocationEnabled(true);
+        //mMap.getUiSettings().setZoomControlsEnabled(true);
         Marker kiel = mMap.addMarker(new MarkerOptions()
                 .position(KIEL)
                 .title("Kiel")
@@ -170,8 +159,8 @@ public class MapsActivity extends FragmentActivity implements
 
                 createMarker(point);
 
-                Toast toast = Toast.makeText(context, text, duration);
-                toast.show();
+//                Toast toast = Toast.makeText(context, text, duration);
+//                toast.show();
             }
         });
 
@@ -185,7 +174,12 @@ public class MapsActivity extends FragmentActivity implements
         tempMarker = mMap.addMarker(new MarkerOptions()
                 .position(p)
                 .title("TempMarker")
-                .snippet("A temporary marker"));
+
+                        // TODO: try to guess address of marker
+                .snippet("Tap to create a new Spot."));
+        // listen for clicks on the window
+        mMap.setOnInfoWindowClickListener(this);
+
     }
 
     private void moveCameraToLastLocation() {
@@ -202,13 +196,6 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
-    protected void createLocationRequest() {
-        mLocationRequest = new LocationRequest();
-        mLocationRequest.setInterval(10000);
-        mLocationRequest.setFastestInterval(5000);
-        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-    }
-
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
 
@@ -222,5 +209,37 @@ public class MapsActivity extends FragmentActivity implements
     @Override
     public void onLocationChanged(Location location) {
 
+    }
+
+    /**
+     * This gets called when someone taps on the marker description
+     */
+
+    @Override
+    public void onInfoWindowClick(Marker marker) {
+        // create the "new spot" mask here
+        DialogFragment newFragment = new CreateNewSpotDialog();
+        newFragment.show(getFragmentManager(), "createNewSpotDialog");
+    }
+
+    /**
+     * User confirmed the creation of a new spot
+     *
+     * @param dialog
+     * @param spotName
+     * @param spotRating
+     */
+
+    @Override
+    public void onDialogPositiveClick(DialogFragment dialog, String spotName, float spotRating) {
+
+        Toast toast = Toast.makeText(getApplicationContext(), spotName + " rated: " + spotRating, Toast.LENGTH_SHORT);
+        toast.show();
+
+    }
+
+    @Override
+    public void onDialogNegativeClick(DialogFragment dialog) {
+        dialog.getDialog().cancel();
     }
 }
