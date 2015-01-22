@@ -3,7 +3,9 @@ package de.admuc.gruppe12.workingtitle;
 import android.app.DialogFragment;
 import android.content.Context;
 import android.location.Location;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Looper;
 import android.support.v4.app.FragmentActivity;
 import android.widget.Toast;
 
@@ -25,7 +27,18 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-// why were these imports static?
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicHeader;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.protocol.HTTP;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.InputStream;
 
 /**
  * This class creates and wraps the Google Maps View.
@@ -40,6 +53,8 @@ public class MapsActivity extends FragmentActivity implements
     public static final String TEMP_MARKER_LAT = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LAT";
     public static final String TEMP_MARKER_LONG = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LONG";
     static final LatLng KIEL = new LatLng(53.551, 9.993);
+    private static String url = "http://mmc-xmpp.cloudapp.net/v1/pois";
+
     /**
      * Stores parameters for requests to the FusedLocationProviderApi.
      */
@@ -59,6 +74,10 @@ public class MapsActivity extends FragmentActivity implements
      */
     private Marker tempMarker = null;
 
+    private int id;
+    private float rating;
+    private String title;
+    private LatLng latLng;
 
     /**
      * The Google API needs this one
@@ -77,7 +96,6 @@ public class MapsActivity extends FragmentActivity implements
     protected void onStart() {
         super.onStart();
 
-
     }
 
     @Override
@@ -95,6 +113,13 @@ public class MapsActivity extends FragmentActivity implements
         if (mGoogleApiClient != null) {
             mGoogleApiClient.connect();
         }
+        downloadPOIs();
+
+    }
+
+    private void downloadPOIs() {
+        new FetchDataAsync().execute();
+
     }
 
     @Override
@@ -235,11 +260,120 @@ public class MapsActivity extends FragmentActivity implements
 
         Toast toast = Toast.makeText(getApplicationContext(), spotName + " rated: " + spotRating, Toast.LENGTH_SHORT);
         toast.show();
+        sendJson();
 
     }
+
+    /**
+     * Try sending data to the server
+     */
+
+    protected void sendJson() {
+        Thread t = new Thread() {
+
+            public void run() {
+                Looper.prepare(); //For Preparing Message Pool for the child Thread
+                HttpClient client = new DefaultHttpClient();
+                HttpConnectionParams.setConnectionTimeout(client.getParams(), 10000); //Timeout Limit
+                HttpResponse response;
+                JSONObject json = new JSONObject();
+
+                try {
+                    HttpPost post = new HttpPost("http://private-anon-4222e7a90-poimanager1.apiary-mock.com/v1/pois");
+                    json.put("title", "Strange spot.");
+                    json.put("latitude", 0.123);
+                    json.put("longitude", 9876543210.017);
+                    json.put("rating", 4);
+                    StringEntity se = new StringEntity(json.toString());
+
+                    se.setContentType(new BasicHeader(HTTP.CONTENT_TYPE, "application/json"));
+                    post.setEntity(se);
+                    response = client.execute(post);
+                    Toast toast = Toast.makeText(getApplicationContext(), response.getStatusLine().getReasonPhrase().toString(), Toast.LENGTH_LONG);
+                    toast.show();
+
+
+                    /*Checking response */
+                    if (response != null) {
+                        InputStream in = response.getEntity().getContent(); //Get the data in the entity
+                    }
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    //("Error", "Cannot Estabilish Connection");
+                }
+
+                Looper.loop(); //Loop in the message queue
+            }
+        };
+
+        t.start();
+    }
+
 
     @Override
     public void onDialogNegativeClick(DialogFragment dialog) {
         dialog.getDialog().cancel();
     }
+
+    /**
+     * Created by matti on 22.01.2015.
+     */
+    private class FetchDataAsync extends AsyncTask<String, String, JSONObject> {
+
+        private static final String TAG_ID = "id";
+        private static final String TAG_TITLE = "title";
+        private static final String TAG_LAT = "latitude";
+        private static final String TAG_LONG = "longitude";
+        private static final String TAG_RATING = "rating";
+
+        //    public FetchDataAsync(Activity main){
+//        this.main = main;
+//    }
+//    private ProgressDialog progressDialog = new ProgressDialog(this);
+//        InputStream inputStream = null;
+//        String result = "";
+
+        protected void onPreExecute() {
+//        progressDialog.setMessage("Downloading your data...");
+//        progressDialog.show();
+//        progressDialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
+//            public void onCancel(DialogInterface arg0) {
+//                FetchDataAsync.this.cancel(true);
+//            }
+//        });
+        }
+
+        @Override
+        protected JSONObject doInBackground(String... params) {
+
+            JSONParser jParser = new JSONParser();
+            // Getting JSON from URL
+            JSONObject json = null;
+            try {
+                json = (jParser.getJSONFromUrl(url)).getJSONObject(0);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            return json;
+
+        } // protected Void doInBackground(String... params)
+
+        protected void onPostExecute(JSONObject json) {
+            try {
+                id = json.getInt(TAG_ID);
+                rating = json.getLong(TAG_RATING);
+                title = json.getString(TAG_TITLE);
+                latLng = new LatLng(json.getLong(TAG_LAT), json.getLong(TAG_LONG));
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+//            createMarker(latLng);
+//            Toast a = new Toast(MapsActivity.this);
+//            a.setText(latLng.toString());
+
+        } // protected void onPostExecute(Void v)
+    } //class MyAsyncTask extends AsyncTask<String, String, Void>
+
 }
+
