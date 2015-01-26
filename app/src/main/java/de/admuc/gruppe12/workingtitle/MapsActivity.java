@@ -2,11 +2,14 @@ package de.admuc.gruppe12.workingtitle;
 
 import android.app.DialogFragment;
 import android.content.Context;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Looper;
 import android.support.v4.app.FragmentActivity;
+import android.util.Log;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -28,17 +31,21 @@ import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicHeader;
+import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.params.HttpConnectionParams;
-import org.apache.http.protocol.HTTP;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.InputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * This class creates and wraps the Google Maps View.
@@ -88,7 +95,6 @@ public class MapsActivity extends FragmentActivity implements
                 .addOnConnectionFailedListener(this)
                 .addApi(LocationServices.API)
                 .build();
-        //createLocationRequest();
     }
 
 
@@ -180,9 +186,7 @@ public class MapsActivity extends FragmentActivity implements
                 Context context = getApplicationContext();
                 CharSequence text = "Hello toast! Pos: " + point.latitude + ":" + point.longitude;
                 int duration = Toast.LENGTH_SHORT;
-
-
-                createMarker(point);
+                createTempMarker(point);
 
 //                Toast toast = Toast.makeText(context, text, duration);
 //                toast.show();
@@ -191,8 +195,8 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
-    private void createMarker(LatLng p) {
-        // create a marker at the clicked location
+    private void createTempMarker(LatLng p) {
+        // create a new marker at the clicked location
         if (tempMarker != null)
             tempMarker.remove();
         tempMarker = null;
@@ -204,6 +208,24 @@ public class MapsActivity extends FragmentActivity implements
                 .snippet("Tap to create a new Spot."));
         // listen for clicks on the window
         mMap.setOnInfoWindowClickListener(this);
+        Geocoder geocoder;
+        List<Address> addresses;
+        geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            addresses = geocoder.getFromLocation(tempMarker.getPosition().latitude, tempMarker.getPosition().longitude, 1);
+            String address = addresses.get(0).getAddressLine(0);
+            //String city = addresses.get(0).getAddressLine(1);
+            //String country = addresses.get(0).getAddressLine(2);
+            if (address != null) {
+                tempMarker.setTitle(address);
+            }
+            tempMarker.showInfoWindow();
+        } catch (IOException e) {
+            e.printStackTrace();
+
+        }
+
+
 
     }
 
@@ -244,7 +266,7 @@ public class MapsActivity extends FragmentActivity implements
     public void onInfoWindowClick(Marker marker) {
         // create the "new spot" mask here
         DialogFragment newFragment = new CreateNewSpotDialog();
-        newFragment.show(getFragmentManager(), "createNewSpotDialog");
+        newFragment.show(getFragmentManager(), "newSpot");
     }
 
     /**
@@ -260,46 +282,45 @@ public class MapsActivity extends FragmentActivity implements
 
         Toast toast = Toast.makeText(getApplicationContext(), spotName + " rated: " + spotRating, Toast.LENGTH_SHORT);
         toast.show();
-        sendJson();
+        sendJson(spotName, spotRating, tempMarker.getPosition());
 
     }
 
     /**
      * Try sending data to the server
+     * @param spotName
+     * @param spotRating
      */
-
-    protected void sendJson() {
-        Thread t = new Thread() {
+    protected void sendJson(final String spotName, final float spotRating, final LatLng pos) {
+        final Thread t = new Thread() {
 
             public void run() {
                 Looper.prepare(); //For Preparing Message Pool for the child Thread
                 HttpClient client = new DefaultHttpClient();
                 HttpConnectionParams.setConnectionTimeout(client.getParams(), 10000); //Timeout Limit
                 HttpResponse response;
-                JSONObject json = new JSONObject();
+                HttpPost post = new HttpPost("http://mmc-xmpp.cloudapp.net/v1/pois");
 
                 try {
-                    HttpPost post = new HttpPost("http://private-anon-4222e7a90-poimanager1.apiary-mock.com/v1/pois");
-                    json.put("title", "Strange spot.");
-                    json.put("latitude", 0.123);
-                    json.put("longitude", 9876543210.017);
-                    json.put("rating", 4);
-                    StringEntity se = new StringEntity(json.toString());
+                    List<NameValuePair> nameValuePairs = new ArrayList<>(2);
+                    nameValuePairs.add(new BasicNameValuePair("title", spotName));
+                    nameValuePairs.add(new BasicNameValuePair("latitude", Double.toString(pos.latitude)));
+                    nameValuePairs.add(new BasicNameValuePair("longitude", Double.toString(pos.longitude)));
+                    nameValuePairs.add(new BasicNameValuePair("rating", Float.toString(spotRating)) {
+                    });
 
-                    se.setContentType(new BasicHeader(HTTP.CONTENT_TYPE, "application/json"));
-                    post.setEntity(se);
+                    post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
                     response = client.execute(post);
-                    Toast toast = Toast.makeText(getApplicationContext(), response.getStatusLine().getReasonPhrase().toString(), Toast.LENGTH_LONG);
+
+                    // create a JSON Object from the response
+                    String responseString = new BasicResponseHandler().handleResponse(response);
+                    JSONObject jsonOb = new JSONObject(responseString);
+
+                    Toast toast = Toast.makeText(getApplicationContext(), jsonOb.get("title").toString(), Toast.LENGTH_LONG);
                     toast.show();
 
-
-                    /*Checking response */
-                    if (response != null) {
-                        InputStream in = response.getEntity().getContent(); //Get the data in the entity
-                    }
-
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    Log.e(e.getClass().getName(), e.getMessage(), e);
                     //("Error", "Cannot Estabilish Connection");
                 }
 
@@ -361,10 +382,12 @@ public class MapsActivity extends FragmentActivity implements
 
         protected void onPostExecute(JSONObject json) {
             try {
-                id = json.getInt(TAG_ID);
-                rating = json.getLong(TAG_RATING);
-                title = json.getString(TAG_TITLE);
-                latLng = new LatLng(json.getLong(TAG_LAT), json.getLong(TAG_LONG));
+                if (json != null) {
+                    id = json.getInt(TAG_ID);
+                    rating = json.getLong(TAG_RATING);
+                    title = json.getString(TAG_TITLE);
+                    latLng = new LatLng(json.getLong(TAG_LAT), json.getLong(TAG_LONG));
+                }
             } catch (JSONException e) {
                 e.printStackTrace();
             }
