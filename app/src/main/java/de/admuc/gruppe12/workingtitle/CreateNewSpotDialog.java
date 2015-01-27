@@ -52,7 +52,8 @@ public class CreateNewSpotDialog extends DialogFragment {
                         spotRating = ratingBar.getRating();
 
                         // Send the positive button event back to the host activity
-                        mListener.onDialogPositiveClick(CreateNewSpotDialog.this, spotName, spotRating);
+                        // 2nd argument ist needed to use the interface for two buttonListener
+                        mListener.onDialogPositiveClick(CreateNewSpotDialog.this, 0, spotName, spotRating);
                     }
                 })
                 .setNegativeButton("Discard", new DialogInterface.OnClickListener() {
@@ -70,7 +71,7 @@ public class CreateNewSpotDialog extends DialogFragment {
      * implement this interface in order to receive event callbacks.
      * Each method passes the DialogFragment in case the host needs to query it. */
     public interface NoticeDialogListener {
-        public void onDialogPositiveClick(DialogFragment dialog, String spotName, float spotRating);
+        public void onDialogPositiveClick(DialogFragment dialog, int id, String spotName, float spotRating);
 
         public void onDialogNegativeClick(DialogFragment dialog);
     }

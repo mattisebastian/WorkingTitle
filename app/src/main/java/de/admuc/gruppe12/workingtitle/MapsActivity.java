@@ -58,9 +58,8 @@ public class MapsActivity extends FragmentActivity implements
         LocationListener, OnInfoWindowClickListener,
         NoticeDialogListener, CreateNewSpotDialog.NoticeDialogListener {
 
-    public static final String TEMP_MARKER_LAT = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LAT";
-    public static final String TEMP_MARKER_LONG = "de.admuc.gruppe12.workingtitle.TEMP_MARKER_LONG";
     private static final String url = "http://mmc-xmpp.cloudapp.net/v1/pois";
+    private static final String url_to_poi = "http://mmc-xmpp.cloudapp.net/v1/poi/";
 
     private HashMap<Marker, JSONObject> markerMap;
 
@@ -141,7 +140,7 @@ public class MapsActivity extends FragmentActivity implements
                         Marker m = mMap.addMarker(new MarkerOptions()
                                         .position(new LatLng(point.getDouble("latitude"), point.getDouble("longitude")))
                                         .title(point.getString("title"))
-                                        .snippet("This spot has a rating of " + point.getDouble("rating"))
+                                        .snippet("This spot has a rating of " + (String.valueOf(String.format("%.1f", point.getDouble("rating")))))
                         );
                         // listen for clicks on the window
 
@@ -158,9 +157,6 @@ public class MapsActivity extends FragmentActivity implements
 
 
     }
-
-
-
 
 
     @Override
@@ -260,9 +256,10 @@ public class MapsActivity extends FragmentActivity implements
     }
 
     @Override
-    public void onLocationChanged(Location location) {
 
+    public void onLocationChanged(Location location) {
     }
+
 
     /**
      * This gets called when someone taps on the marker description
@@ -270,21 +267,30 @@ public class MapsActivity extends FragmentActivity implements
 
     @Override
     public void onInfoWindowClick(Marker marker) {
+
         // check whether the marker exists already
         if (markerMap.containsKey(marker)) {
             // marker exists on the server
             // create a rating dialog here
             DialogFragment newFragment = new SpotDetailDialog();
+            Bundle b = new Bundle();
+            try {
+                b.putString("title", markerMap.get(marker).getString("title"));
+                b.putLong("rating", markerMap.get(marker).getLong("rating"));
+                b.putInt("id", markerMap.get(marker).getInt("id"));
+            } catch (JSONException e) {
+                Log.e(e.getClass().getName(), e.getMessage(), e);
+            }
+            newFragment.setArguments(b);
             newFragment.show(getFragmentManager(), "detailDialog");
         } else {
-            // we just created the marker
             DialogFragment newFragment = new CreateNewSpotDialog();
             newFragment.show(getFragmentManager(), "newSpot");
         }
     }
 
     /**
-     * User confirmed the creation of a new spot
+     * User confirmed one of the dialogs
      *
      * @param dialog
      * @param spotName
@@ -292,14 +298,14 @@ public class MapsActivity extends FragmentActivity implements
      */
 
     @Override
-    public void onDialogPositiveClick(DialogFragment dialog, String spotName, float spotRating) {
+    public void onDialogPositiveClick(DialogFragment dialog, int id, String spotName, float spotRating) {
 
         if (dialog instanceof CreateNewSpotDialog) {
-            Toast toast = Toast.makeText(getApplicationContext(), spotName + " rated: " + spotRating, Toast.LENGTH_SHORT);
+            Toast toast = Toast.makeText(getApplicationContext(), spotName + " created, Rating: " + spotRating, Toast.LENGTH_SHORT);
             toast.show();
-            sendJson(spotName, spotRating, tempMarker.getPosition());
+            sendPOI(spotName, spotRating, tempMarker.getPosition());
         } else if (dialog instanceof SpotDetailDialog) {
-
+            sendRating(id, spotRating);
             Toast toast = Toast.makeText(getApplicationContext(), "Rated the spot! : " + spotRating, Toast.LENGTH_SHORT);
             toast.show();
 
@@ -308,12 +314,17 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
+    @Override
+    public void onDialogNegativeClick(DialogFragment dialog) {
+        dialog.getDialog().cancel();
+    }
+
     /**
-     * Try sending data to the server
+     * Try sending a spot to the server
      * @param spotName
      * @param spotRating
      */
-    protected void sendJson(final String spotName, final float spotRating, final LatLng pos) {
+    protected void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
         final Thread t = new Thread() {
             public void run() {
                 Looper.prepare(); //For Preparing Message Pool for the child Thread
@@ -350,9 +361,38 @@ public class MapsActivity extends FragmentActivity implements
         t.start();
     }
 
-    @Override
-    public void onDialogNegativeClick(DialogFragment dialog) {
-        dialog.getDialog().cancel();
+    protected void sendRating(final int id, final float spotRating) {
+        final Thread t = new Thread() {
+            public void run() {
+                Looper.prepare(); //For Preparing Message Pool for the child Thread
+                HttpClient client = new DefaultHttpClient();
+                HttpConnectionParams.setConnectionTimeout(client.getParams(), 10000); //Timeout Limit
+                HttpResponse response;
+                HttpPost post = new HttpPost(url_to_poi + id);
+
+                try {
+                    List<NameValuePair> nameValuePairs = new ArrayList<>(2);
+                    nameValuePairs.add(new BasicNameValuePair("rating", Float.toString(spotRating)) {
+                    });
+
+                    post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
+                    response = client.execute(post);
+
+                    // create a JSON Object from the response
+                    String responseString = new BasicResponseHandler().handleResponse(response);
+                    JSONObject jsonOb = new JSONObject(responseString);
+
+
+                } catch (Exception e) {
+                    Log.e(e.getClass().getName(), e.getMessage(), e);
+                    //("Error", "Cannot Estabilish Connection");
+                }
+
+                Looper.loop(); //Loop in the message queue
+            }
+        };
+
+        t.start();
     }
 
     /**
