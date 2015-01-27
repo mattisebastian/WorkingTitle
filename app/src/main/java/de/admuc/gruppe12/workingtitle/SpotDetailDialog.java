@@ -12,13 +12,12 @@ import android.widget.EditText;
 import android.widget.RatingBar;
 
 /**
- * Created by matti on 21.01.2015.
+ * Created by matti on 27.01.2015.
  */
-public class CreateNewSpotDialog extends DialogFragment {
-
+public class SpotDetailDialog extends DialogFragment {
     // Use this instance of the interface to deliver action events
     NoticeDialogListener mListener;
-    private float spotRating = 0;
+    private float userRating = 0;
     private String spotName = "";
     private View main = null;
 
@@ -42,24 +41,25 @@ public class CreateNewSpotDialog extends DialogFragment {
         AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
         LayoutInflater inflater = getActivity().getLayoutInflater();
 
+        // I need a nice little layout here
         builder.setView(main = inflater.inflate(R.layout.create_news_spot, null))
-                .setPositiveButton("Create Spot", new DialogInterface.OnClickListener() {
+                .setPositiveButton("Send rating", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         // save input data
                         spotName = ((EditText) main.findViewById(R.id.locationName)).getText().toString();
                         RatingBar ratingBar = (RatingBar) main.findViewById(R.id.ratingBar);
-                        spotRating = ratingBar.getRating();
+                        userRating = ratingBar.getRating();
 
                         // Send the positive button event back to the host activity
-                        mListener.onDialogPositiveClick(CreateNewSpotDialog.this, spotName, spotRating);
+                        mListener.onDialogPositiveClick(SpotDetailDialog.this, spotName, userRating);
                     }
                 })
                 .setNegativeButton("Discard", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         // Send the negative button event back to the host activity
-                        mListener.onDialogNegativeClick(CreateNewSpotDialog.this);
+                        mListener.onDialogNegativeClick(SpotDetailDialog.this);
 
                     }
                 });
