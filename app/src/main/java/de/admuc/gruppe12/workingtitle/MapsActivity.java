@@ -73,9 +73,8 @@ import static de.admuc.gruppe12.workingtitle.SpotDetailDialog.NoticeDialogListen
  */
 
 public class MapsActivity extends FragmentActivity implements
-        ConnectionCallbacks, OnConnectionFailedListener,
-        LocationListener, OnInfoWindowClickListener,
-        NoticeDialogListener, CreateNewSpotDialog.NoticeDialogListener {
+        ConnectionCallbacks, LocationListener, OnInfoWindowClickListener,
+        NoticeDialogListener, CreateNewSpotDialog.NoticeDialogListener, OnConnectionFailedListener {
 
     private static final String url = "http://mmc-xmpp.cloudapp.net/v1/pois";
     private static final String url_to_poi = "http://mmc-xmpp.cloudapp.net/v1/poi/";
@@ -306,10 +305,6 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
-    @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {
-
-    }
 
     @Override
     public void onConnectionSuspended(int i) {
@@ -348,6 +343,7 @@ public class MapsActivity extends FragmentActivity implements
             DialogFragment newFragment = new CreateNewSpotDialog();
             newFragment.show(getFragmentManager(), "newSpot");
         }
+
     }
 
     @Override
@@ -355,13 +351,14 @@ public class MapsActivity extends FragmentActivity implements
 
         if (dialog instanceof CreateNewSpotDialog) {
             queuePOI(spotName, spotRating, tempMarker.getPosition());
+            if(tempMarker != null){
+                tempMarker.remove();
+            }
 
         } else if (dialog instanceof SpotDetailDialog) {
             sendRating(id, spotRating);
             Toast toast = Toast.makeText(getApplicationContext(), "Rated the spot! : " + spotRating, Toast.LENGTH_SHORT);
             toast.show();
-
-            // works, do the actual work here (sending rating to the server) (i mean delegate it)
         }
 
     }
@@ -376,13 +373,9 @@ public class MapsActivity extends FragmentActivity implements
         // Handle presses on the action bar items
         switch (item.getItemId()) {
             case R.id.action_search:
-                // clear markers
                 mMap.clear();
                 removeMarkers();
-
-                // reload POIs from server
                 downloadPOIs();
-
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
@@ -404,13 +397,25 @@ public class MapsActivity extends FragmentActivity implements
         return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
 
+    /**
+     *
+     * @param edit the editor
+     * @param key the key to put in the shared preferences
+     * @param value the value to store
+     * @return
+     */
 
     // helper method to store long in sharedPreferences
     Editor putDouble(final Editor edit, final String key, final double value) {
         return edit.putLong(key, Double.doubleToRawLongBits(value));
     }
 
-    // helper method to get long from sharedPreferences
+    /** helper method to get long from sharedPreferences
+     *
+     *
+     */
+
+
     double getDouble(final SharedPreferences prefs, final String key, final double defaultValue) {
         return Double.longBitsToDouble(prefs.getLong(key, Double.doubleToLongBits(defaultValue)));
     }
@@ -439,46 +444,9 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
-    private class ConnectivityChangeReceiver extends BroadcastReceiver {
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
 
-        private int reason;
-
-        public ConnectivityChangeReceiver(int reason) {
-            this.reason = reason;
-        }
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            switch (reason) {
-                case 0:
-                    // no connection at startup
-                    downloadPOIs();
-                    break;
-                case 1:
-                    // no connection when sending POI
-                    if (isNetworkAvailable()) {
-                        // send the poi now
-                        SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
-                        String name = sharedPref.getString("title", "no title found in shared preferences");
-                        float rating = sharedPref.getFloat("rating", 0);
-                        LatLng pos = new LatLng(getDouble(sharedPref, "latitude", 0), getDouble(sharedPref, "longitude", 0));
-                        sendPOI(name, rating, pos);
-                        makeToast("Sent the POI now!");
-                    }
-                    break;
-                default:
-                    throw new IllegalArgumentException("Wrong argument for the ConnectivityChangedBroadcastReceiver");
-
-
-            }
-        }
-    }
-
-
-    private void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
-
-        JSONSendingClient client = new JSONSendingClient(MapsActivity.this, spotName, pos, spotRating);
-        client.execute(url);
     }
 
     protected void sendRating(final int id, final float spotRating) {
@@ -511,6 +479,50 @@ public class MapsActivity extends FragmentActivity implements
         };
 
         t.start();
+    }
+
+    private void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
+
+        JSONSendingClient client = new JSONSendingClient(MapsActivity.this, spotName, pos, spotRating);
+        client.execute(url);
+    }
+
+    /* -------- private classes ------- */
+
+    private class ConnectivityChangeReceiver extends BroadcastReceiver {
+
+        private int reason;
+        public ConnectivityChangeReceiver(int reason) {
+            this.reason = reason;
+        }
+
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            switch (reason) {
+                case 0:
+                    // no connection at startup
+                    downloadPOIs();
+                    break;
+                case 1:
+                    // no connection when sending POI
+                    if (isNetworkAvailable()) {
+                        // send the poi now
+                        SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+                        String name = sharedPref.getString("title", "no title found in shared preferences");
+                        float rating = sharedPref.getFloat("rating", 0);
+                        LatLng pos = new LatLng(getDouble(sharedPref, "latitude", 0), getDouble(sharedPref, "longitude", 0));
+                        sendPOI(name, rating, pos);
+                        makeToast("Sent the POI now!");
+                    }
+                    break;
+                default:
+                    throw new IllegalArgumentException("Wrong argument for the ConnectivityChangedBroadcastReceiver");
+
+
+            }
+        }
+
     }
 
     /**
@@ -547,7 +559,7 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
-    public class JSONSendingClient extends AsyncTask<String, Void, JSONObject> {
+    private class JSONSendingClient extends AsyncTask<String, Void, JSONObject> {
 
         private String title = "";
         private LatLng point;
