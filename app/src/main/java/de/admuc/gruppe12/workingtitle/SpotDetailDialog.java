@@ -11,6 +11,8 @@ import android.view.View;
 import android.widget.RatingBar;
 import android.widget.TextView;
 
+import java.text.DecimalFormat;
+
 /**
  * Created by matti on 27.01.2015.
  */
@@ -70,10 +72,11 @@ public class SpotDetailDialog extends DialogFragment {
 
         // get the data from the bundle to show in the dialog
         Bundle b = getArguments();
-        float current_rating = b.getLong("rating");
+        double current_rating = b.getDouble("rating");
         String title = b.getString("title");
         // display data in the view
-        spot_detail_rating.setText(String.valueOf(String.format("%.1f", current_rating)));
+        DecimalFormat df = new DecimalFormat("#.#");
+        spot_detail_rating.setText(String.valueOf(df.format(current_rating)));
         spot_detail_name.setText(title);
 
         return builder.create();

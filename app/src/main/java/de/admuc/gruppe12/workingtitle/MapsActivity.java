@@ -1,11 +1,18 @@
 package de.admuc.gruppe12.workingtitle;
 
-import android.app.ActionBar;
 import android.app.DialogFragment;
+import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Looper;
 import android.support.v4.app.FragmentActivity;
@@ -31,6 +38,7 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
@@ -44,12 +52,19 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import static android.content.SharedPreferences.Editor;
 import static de.admuc.gruppe12.workingtitle.SpotDetailDialog.NoticeDialogListener;
 
 /**
@@ -92,6 +107,11 @@ public class MapsActivity extends FragmentActivity implements
                 .build();
     }
 
+    private void makeToast(String text) {
+        Toast toast = Toast.makeText(getApplicationContext(), text, Toast.LENGTH_SHORT);
+        toast.show();
+
+    }
 
     @Override
     protected void onStart() {
@@ -105,8 +125,6 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
-
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -116,9 +134,16 @@ public class MapsActivity extends FragmentActivity implements
         if (mGoogleApiClient != null) {
             mGoogleApiClient.connect();
         }
+        // setup the marker map
+        markerMap = new HashMap<>();
 
-        // check whether there are
-        downloadPOIs();
+        // check for internet connection and if there is none listen for changes
+        if (isNetworkAvailable()) {
+            downloadPOIs();
+        } else {
+            registerReceiver(new ConnectivityChangeReceiver(0),
+                    new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        }
 
     }
 
@@ -136,38 +161,52 @@ public class MapsActivity extends FragmentActivity implements
             public void run() {
                 JSONParser jParser = new JSONParser();
                 // Getting JSON from URL
-                JSONArray json;
-                json = (jParser.getJSONFromUrl(url));
+
+                JSONArray json = (jParser.getJSONFromUrl(url));
                 initiateMarkerMap(json);
             }
         }).start();
     }
 
-    private Marker createMarker(String name, double latitude, double longitude, double rating){
-        return mMap.addMarker(new MarkerOptions()
+    private Marker createMarker(JSONObject point) {
+        String name = null;
+        double latitude = 0;
+        double longitude = 0;
+        double rating = 0;
+        try {
+            name = point.getString("title");
+            latitude = point.getDouble("latitude");
+            longitude = point.getDouble("longitude");
+            rating = point.getDouble("rating");
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        Marker m = mMap.addMarker(new MarkerOptions()
                         .position(new LatLng(latitude, longitude))
                         .title(name)
-                        .snippet("This spot has a rating of " + (String.valueOf(String.format("%.1f", rating))))
+                        .snippet("This spot has a rating of " +
+                                (String.valueOf(String.format("%.1f", rating))))
         );
+        if (!markerMap.containsKey(m)) {
+            markerMap.put(m, point);
+        }
+        m.showInfoWindow();
+        return m;
 
     }
 
     private void initiateMarkerMap(final JSONArray json) {
-        markerMap = new HashMap<>();
-
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
 
                 try {
-                    for (int i = 0; i < json.length(); i++) {
-                        JSONObject point = json.getJSONObject(i);
-                        Marker m = createMarker(point.getString("title"), point.getDouble("latitude"), point.getDouble("longitude"),
-                                point.getDouble("rating"));
-                        // i think i need to call this only once in the setupMap method
-                        //mMap.setOnInfoWindowClickListener(this);
-                        markerMap.put(m, point);
-                    }
+                    if (json != null)
+                        for (int i = 0; i < json.length(); i++) {
+                            JSONObject point = json.getJSONObject(i);
+                            createMarker(point);
+
+                        }
                 } catch (JSONException e) {
                     Log.e(e.getClass().getName(), e.getMessage(), e);
 
@@ -184,6 +223,7 @@ public class MapsActivity extends FragmentActivity implements
         super.onResume();
         setUpMapIfNeeded();
     }
+
     /**
      * Sets up the map if it is possible to do so (i.e., the Google Play services APK is correctly
      * installed) and the map has not already been instantiated.. This will ensure that we only ever
@@ -211,6 +251,7 @@ public class MapsActivity extends FragmentActivity implements
             }
         }
     }
+
     /**
      * This is where we can add markers or lines, add listeners or move the camera. In this case, we
      * just add a marker near Africa.
@@ -296,7 +337,7 @@ public class MapsActivity extends FragmentActivity implements
             Bundle b = new Bundle();
             try {
                 b.putString("title", markerMap.get(marker).getString("title"));
-                b.putLong("rating", markerMap.get(marker).getLong("rating"));
+                b.putDouble("rating", markerMap.get(marker).getDouble("rating"));
                 b.putInt("id", markerMap.get(marker).getInt("id"));
             } catch (JSONException e) {
                 Log.e(e.getClass().getName(), e.getMessage(), e);
@@ -313,15 +354,7 @@ public class MapsActivity extends FragmentActivity implements
     public void onDialogPositiveClick(DialogFragment dialog, int id, String spotName, float spotRating) {
 
         if (dialog instanceof CreateNewSpotDialog) {
-            Toast toast = Toast.makeText(getApplicationContext(), spotName + " created, Rating: " + spotRating, Toast.LENGTH_SHORT);
-            toast.show();
-            sendPOI(spotName, spotRating, tempMarker.getPosition());
-            // also create the marker on the map
-            // marker might be null if user changes orientation during the dialog
-            if(tempMarker != null) {
-
-                createMarker(spotName, tempMarker.getPosition().latitude, tempMarker.getPosition().longitude, spotRating);
-            }
+            queuePOI(spotName, spotRating, tempMarker.getPosition());
 
         } else if (dialog instanceof SpotDetailDialog) {
             sendRating(id, spotRating);
@@ -344,6 +377,7 @@ public class MapsActivity extends FragmentActivity implements
         switch (item.getItemId()) {
             case R.id.action_search:
                 // clear markers
+                mMap.clear();
                 removeMarkers();
 
                 // reload POIs from server
@@ -356,42 +390,95 @@ public class MapsActivity extends FragmentActivity implements
     }
 
     private void removeMarkers() {
-        if(markerMap != null){
-            for(Marker m : markerMap.keySet()){
+        if (markerMap != null) {
+            for (Marker m : markerMap.keySet()) {
                 m.remove();
             }
         }
     }
 
-    protected void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
-        final Thread t = new Thread() {
-            public void run() {
-                Looper.prepare(); //For Preparing Message Pool for the child Thread
-                HttpClient client = new DefaultHttpClient();
-                HttpConnectionParams.setConnectionTimeout(client.getParams(), 10000); //Timeout Limit
-                HttpResponse response;
-                HttpPost post = new HttpPost(url);
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager
+                = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+    }
 
-                try {
-                    List<NameValuePair> nameValuePairs = new ArrayList<>(2);
-                    nameValuePairs.add(new BasicNameValuePair("title", spotName));
-                    nameValuePairs.add(new BasicNameValuePair("latitude", Double.toString(pos.latitude)));
-                    nameValuePairs.add(new BasicNameValuePair("longitude", Double.toString(pos.longitude)));
-                    nameValuePairs.add(new BasicNameValuePair("rating", Float.toString(spotRating)) {
-                    });
 
-                    post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
+    // helper method to store long in sharedPreferences
+    Editor putDouble(final Editor edit, final String key, final double value) {
+        return edit.putLong(key, Double.doubleToRawLongBits(value));
+    }
 
-                } catch (Exception e) {
-                    Log.e(e.getClass().getName(), e.getMessage(), e);
-                    //("Error", "Cannot Estabilish Connection");
-                }
+    // helper method to get long from sharedPreferences
+    double getDouble(final SharedPreferences prefs, final String key, final double defaultValue) {
+        return Double.longBitsToDouble(prefs.getLong(key, Double.doubleToLongBits(defaultValue)));
+    }
 
-                Looper.loop(); //Loop in the message queue
+    private void queuePOI(final String spotName, final float spotRating, final LatLng pos) {
+
+        if (isNetworkAvailable()) {
+            // if connection available, send the point right away
+            sendPOI(spotName, spotRating, pos);
+        } else {
+            // network is unavailable
+            // store poi in shared preferences and send
+            SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+            Editor editor = sharedPref.edit();
+            editor.putString("title", spotName);
+
+            putDouble(editor, "latitude", pos.latitude);
+            putDouble(editor, "longitude", pos.longitude);
+            editor.putFloat("rating", spotRating);
+            editor.commit();
+
+            registerReceiver(new ConnectivityChangeReceiver(1),
+                    new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        }
+
+
+    }
+
+    private class ConnectivityChangeReceiver extends BroadcastReceiver {
+
+        private int reason;
+
+        public ConnectivityChangeReceiver(int reason) {
+            this.reason = reason;
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            switch (reason) {
+                case 0:
+                    // no connection at startup
+                    downloadPOIs();
+                    break;
+                case 1:
+                    // no connection when sending POI
+                    if (isNetworkAvailable()) {
+                        // send the poi now
+                        SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+                        String name = sharedPref.getString("title", "no title found in shared preferences");
+                        float rating = sharedPref.getFloat("rating", 0);
+                        LatLng pos = new LatLng(getDouble(sharedPref, "latitude", 0), getDouble(sharedPref, "longitude", 0));
+                        sendPOI(name, rating, pos);
+                        makeToast("Sent the POI now!");
+                    }
+                    break;
+                default:
+                    throw new IllegalArgumentException("Wrong argument for the ConnectivityChangedBroadcastReceiver");
+
+
             }
-        };
+        }
+    }
 
-        t.start();
+
+    private void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
+
+        JSONSendingClient client = new JSONSendingClient(MapsActivity.this, spotName, pos, spotRating);
+        client.execute(url);
     }
 
     protected void sendRating(final int id, final float spotRating) {
@@ -413,8 +500,6 @@ public class MapsActivity extends FragmentActivity implements
 
                     // create a JSON Object from the response
                     String responseString = new BasicResponseHandler().handleResponse(response);
-                    JSONObject jsonOb = new JSONObject(responseString);
-
 
                 } catch (Exception e) {
                     Log.e(e.getClass().getName(), e.getMessage(), e);
@@ -442,21 +527,148 @@ public class MapsActivity extends FragmentActivity implements
         @Override
         public void run() {
             try {
-                List<Address> addresses;
-                addresses = gc.getFromLocation(tempMarker.getPosition().latitude, tempMarker.getPosition().longitude, 1);
-                String address = addresses.get(0).getAddressLine(0);
-                //String city = addresses.get(0).getAddressLine(1);
-                //String country = addresses.get(0).getAddressLine(2);
-                if (address != null) {
-                    tempMarker.setTitle(address);
+                if (isNetworkAvailable()) {
+                    List<Address> addresses;
+                    addresses = gc.getFromLocation(tempMarker.getPosition().latitude, tempMarker.getPosition().longitude, 1);
+                    String address = addresses.get(0).getAddressLine(0);
+                    //String city = addresses.get(0).getAddressLine(1);
+                    //String country = addresses.get(0).getAddressLine(2);
+                    if (address != null) {
+                        tempMarker.setTitle(address);
+                    }
                 }
                 tempMarker.showInfoWindow();
             } catch (IOException e) {
                 Log.e(e.getClass().getName(), e.getMessage(), e);
 
             }
+
         }
 
+    }
+
+    public class JSONSendingClient extends AsyncTask<String, Void, JSONObject> {
+
+        private String title = "";
+        private LatLng point;
+        private float rating;
+
+        private ProgressDialog progressDialog;
+
+        public JSONSendingClient(Context context, String title, LatLng point, float rating) {
+            this.title = title;
+            this.point = point;
+            this.rating = rating;
+            progressDialog = new ProgressDialog(context);
+        }
+
+        private String convertStreamToString(InputStream is) {
+        /*
+         * To convert the InputStream to String we use the BufferedReader.readLine()
+         * method. We iterate until the BufferedReader return null which means
+         * there's no more data to read. Each line will appended to a StringBuilder
+         * and returned as String.
+         */
+            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+            StringBuilder sb = new StringBuilder();
+
+            String line;
+            try {
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line + "\n");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            return sb.toString();
+        }
+
+
+        public JSONObject connect(String url) {
+            HttpClient httpclient = new DefaultHttpClient();
+
+            // Prepare a request object
+            HttpPost post = new HttpPost(url);
+
+            try {
+                List<NameValuePair> nameValuePairs = new ArrayList<>(2);
+                nameValuePairs.add(new BasicNameValuePair("title", title));
+                nameValuePairs.add(
+                        new BasicNameValuePair("latitude", Double.toString(point.latitude)));
+                nameValuePairs.add(
+                        new BasicNameValuePair("longitude", Double.toString(point.longitude)));
+                nameValuePairs.add(
+                        new BasicNameValuePair("rating", Float.toString(rating)) {
+                        });
+                post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
+
+                // Execute the request
+                HttpResponse response;
+
+                response = httpclient.execute(post);
+                // Examine the response status
+                Log.i("Praeda", response.getStatusLine().toString());
+
+                // Get hold of the response entity
+                HttpEntity entity = response.getEntity();
+
+                if (entity != null) {
+
+                    // A Simple JSON Response Read
+                    InputStream instream = entity.getContent();
+                    String result = convertStreamToString(instream);
+
+                    // A Simple JSONObject Creation
+                    JSONObject json = null;
+                    try {
+                        json = new JSONObject(result);
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+
+                    // Closing the input stream will trigger connection release
+                    instream.close();
+
+                    return json;
+                }
+
+
+            } catch (IOException e) {
+
+                e.printStackTrace();
+            }
+
+            return null;
+        }
+
+        @Override
+        public void onPreExecute() {
+
+            progressDialog.setMessage("Sending your Spot to the server. Please wait..");
+            progressDialog.setCancelable(false);
+            progressDialog.setIndeterminate(true);
+            progressDialog.show();
+
+        }
+
+        @Override
+        protected JSONObject doInBackground(String... urls) {
+            return connect(urls[0]);
+        }
+
+        @Override
+        protected void onPostExecute(JSONObject json) {
+            createMarker(json);
+            tempMarker = null;
+            progressDialog.dismiss();
+        }
     }
 
 
