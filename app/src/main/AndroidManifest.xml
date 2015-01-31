@@ -27,6 +27,7 @@
 
         <activity
             android:name="de.admuc.gruppe12.workingtitle.MapsActivity"
+            android:configChanges="orientation|screenSize"
             android:label="@string/title_activity_maps" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

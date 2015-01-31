@@ -1,5 +1,6 @@
 package de.admuc.gruppe12.workingtitle;
 
+import android.app.ActionBar;
 import android.app.DialogFragment;
 import android.content.Context;
 import android.location.Address;
@@ -9,6 +10,9 @@ import android.os.Bundle;
 import android.os.Looper;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -101,6 +105,8 @@ public class MapsActivity extends FragmentActivity implements
 
     }
 
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,8 +116,18 @@ public class MapsActivity extends FragmentActivity implements
         if (mGoogleApiClient != null) {
             mGoogleApiClient.connect();
         }
+
+        // check whether there are
         downloadPOIs();
 
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu items for use in the action bar
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main_menu, menu);
+        return super.onCreateOptionsMenu(menu);
     }
 
     private void downloadPOIs() {
@@ -127,6 +143,15 @@ public class MapsActivity extends FragmentActivity implements
         }).start();
     }
 
+    private Marker createMarker(String name, double latitude, double longitude, double rating){
+        return mMap.addMarker(new MarkerOptions()
+                        .position(new LatLng(latitude, longitude))
+                        .title(name)
+                        .snippet("This spot has a rating of " + (String.valueOf(String.format("%.1f", rating))))
+        );
+
+    }
+
     private void initiateMarkerMap(final JSONArray json) {
         markerMap = new HashMap<>();
 
@@ -137,13 +162,8 @@ public class MapsActivity extends FragmentActivity implements
                 try {
                     for (int i = 0; i < json.length(); i++) {
                         JSONObject point = json.getJSONObject(i);
-                        Marker m = mMap.addMarker(new MarkerOptions()
-                                        .position(new LatLng(point.getDouble("latitude"), point.getDouble("longitude")))
-                                        .title(point.getString("title"))
-                                        .snippet("This spot has a rating of " + (String.valueOf(String.format("%.1f", point.getDouble("rating")))))
-                        );
-                        // listen for clicks on the window
-
+                        Marker m = createMarker(point.getString("title"), point.getDouble("latitude"), point.getDouble("longitude"),
+                                point.getDouble("rating"));
                         // i think i need to call this only once in the setupMap method
                         //mMap.setOnInfoWindowClickListener(this);
                         markerMap.put(m, point);
@@ -200,15 +220,15 @@ public class MapsActivity extends FragmentActivity implements
     private void setUpMap() {
 
         // basic ui settings
-        //mMap.setMyLocationEnabled(true);
-        //mMap.getUiSettings().setZoomControlsEnabled(true);
+        mMap.setMyLocationEnabled(true);
+        mMap.getUiSettings().setZoomControlsEnabled(true);
         // listen for clicks on the map, create a dialog for adding a new marker :)
         mMap.setOnMapClickListener(new OnMapClickListener() {
             @Override
             public void onMapClick(LatLng point) {
                 createTempMarker(point);
                 // somehow crashes on emulator, works fine on USB device.
-                //new AddressLookup(MapsActivity.this.getApplicationContext()).run();
+                new AddressLookup(MapsActivity.this.getApplicationContext()).run();
             }
         });
         mMap.setOnInfoWindowClickListener(this);
@@ -289,14 +309,6 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
-    /**
-     * User confirmed one of the dialogs
-     *
-     * @param dialog
-     * @param spotName
-     * @param spotRating
-     */
-
     @Override
     public void onDialogPositiveClick(DialogFragment dialog, int id, String spotName, float spotRating) {
 
@@ -304,6 +316,13 @@ public class MapsActivity extends FragmentActivity implements
             Toast toast = Toast.makeText(getApplicationContext(), spotName + " created, Rating: " + spotRating, Toast.LENGTH_SHORT);
             toast.show();
             sendPOI(spotName, spotRating, tempMarker.getPosition());
+            // also create the marker on the map
+            // marker might be null if user changes orientation during the dialog
+            if(tempMarker != null) {
+
+                createMarker(spotName, tempMarker.getPosition().latitude, tempMarker.getPosition().longitude, spotRating);
+            }
+
         } else if (dialog instanceof SpotDetailDialog) {
             sendRating(id, spotRating);
             Toast toast = Toast.makeText(getApplicationContext(), "Rated the spot! : " + spotRating, Toast.LENGTH_SHORT);
@@ -319,11 +338,31 @@ public class MapsActivity extends FragmentActivity implements
         dialog.getDialog().cancel();
     }
 
-    /**
-     * Try sending a spot to the server
-     * @param spotName
-     * @param spotRating
-     */
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle presses on the action bar items
+        switch (item.getItemId()) {
+            case R.id.action_search:
+                // clear markers
+                removeMarkers();
+
+                // reload POIs from server
+                downloadPOIs();
+
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+    private void removeMarkers() {
+        if(markerMap != null){
+            for(Marker m : markerMap.keySet()){
+                m.remove();
+            }
+        }
+    }
+
     protected void sendPOI(final String spotName, final float spotRating, final LatLng pos) {
         final Thread t = new Thread() {
             public void run() {
@@ -342,12 +381,6 @@ public class MapsActivity extends FragmentActivity implements
                     });
 
                     post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
-                    response = client.execute(post);
-
-                    // create a JSON Object from the response
-                    String responseString = new BasicResponseHandler().handleResponse(response);
-                    JSONObject jsonOb = new JSONObject(responseString);
-
 
                 } catch (Exception e) {
                     Log.e(e.getClass().getName(), e.getMessage(), e);
