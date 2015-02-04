@@ -2,7 +2,7 @@
 <resources>
 
     <string name="app_name">Calisthenics</string>
-    <string name="title_activity_maps">Spot Overview</string>
+    <string name="title_activity_maps">Calisthenics</string>
     <string name="main_menu_refresh">Refresh</string>
 
 </resources>
